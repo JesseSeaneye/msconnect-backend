@@ -10,7 +10,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -40,10 +39,12 @@ public class AuthController {
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setLatitude(request.getLatitude());
         user.setLongitude(request.getLongitude());
-
         userRepository.save(user);
 
-        return ResponseEntity.ok(Map.of("message", "User registered successfully"));
+        return ResponseEntity.ok(Map.of(
+            "message", "Registration successful!",
+            "userId", user.getId()
+        ));
     }
 
     @PostMapping("/login")
