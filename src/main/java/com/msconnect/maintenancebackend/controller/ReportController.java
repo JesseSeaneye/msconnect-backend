@@ -1,6 +1,7 @@
 package com.msconnect.maintenancebackend.controller;
 
 import com.msconnect.maintenancebackend.dto.ReportResponse;
+import com.msconnect.maintenancebackend.repository.ReportRepository;
 import com.msconnect.maintenancebackend.entity.Report;
 import com.msconnect.maintenancebackend.entity.User;
 import com.msconnect.maintenancebackend.repository.UserRepository;
@@ -16,9 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -29,16 +28,19 @@ public class ReportController {
     private final ReportService reportService;
     private final UserService userService;
     private final UserRepository userRepository;
-
+    private final ReportRepository reportRepository;
     private static final String UPLOAD_DIR = "uploads/";
+    
+    // ✅ Round-robin counter per specialty
+    private static final Map<String, Integer> specialtyCounter = new HashMap<>();
 
-    public ReportController(ReportService reportService, UserService userService, UserRepository userRepository) {
+    public ReportController(ReportService reportService, UserService userService, UserRepository userRepository, ReportRepository reportRepository) {
         this.reportService = reportService;
         this.userService = userService;
         this.userRepository = userRepository;
+        this.reportRepository = reportRepository;
     }
 
-    // --- 1. SUBMIT REPORT (PURE DYNAMIC SPECIALTY AUTO-DISPATCH & MEDIA STORAGE) ---
     @PostMapping(value = "/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> submitReportMultipart(
             @RequestParam("category") String category,
@@ -46,12 +48,13 @@ public class ReportController {
             @RequestParam("roomNumber") String roomNumber,
             @RequestParam("description") String description,
             @RequestParam(value = "userId", required = false) Long userId,
-            @RequestParam(value = "mediaFile", required = false) MultipartFile mediaFile
+            @RequestParam(value = "mediaFile", required = false) MultipartFile mediaFile,
+            @RequestParam(value = "visibility", required = false, defaultValue = "public") String visibility
     ) {
         try {
             Report report = new Report();
 
-            // Fetch student account passed by ID
+            // Fetch student account
             User user = null;
             if (userId != null) {
                 user = userService.getUserById(userId).orElse(null);
@@ -60,7 +63,7 @@ public class ReportController {
                 }
             }
 
-            // Fallback student link to prevent PostgreSQL user_id NOT NULL errors
+            // Fallback student
             if (user == null) {
                 user = userRepository.findAll().stream()
                         .filter(u -> "student".equalsIgnoreCase(u.getRole()))
@@ -80,64 +83,38 @@ public class ReportController {
             report.setBlockLandmark(blockLandmark);
             report.setRoomNumber(roomNumber);
             report.setDescription(description);
+            report.setVisibility(visibility);
 
-            // Save Photo or Video Attachment (e.g. .jpg, .png, .mp4, .mov)
+            // Save media file
             if (mediaFile != null && !mediaFile.isEmpty()) {
                 String originalFilename = mediaFile.getOriginalFilename();
                 String cleanFileName = System.currentTimeMillis() + "_" + (originalFilename != null ? originalFilename.replaceAll("[^a-zA-Z0-9\\.\\-_]", "_") : "attachment");
-
                 File uploadFolder = new File(UPLOAD_DIR);
                 if (!uploadFolder.exists()) {
                     uploadFolder.mkdirs();
                 }
-
                 Path filePath = Paths.get(UPLOAD_DIR + cleanFileName);
                 Files.write(filePath, mediaFile.getBytes());
-
                 report.setImageUrl("/uploads/" + cleanFileName);
             }
 
             report.setPriority(determinePriority(category));
+            report.setStatus("in_progress");
+
+            // --- ✅ GUARANTEED ROUND-ROBIN ASSIGNMENT ---
+            User assignedTech = assignTechnicianRoundRobin(category);
             
-            // Strictly set status to PENDING_ACCEPTANCE for new submissions
-            report.setStatus("PENDING_ACCEPTANCE");
-
-            // --- 🎯 PURE DYNAMIC SPECIALTY AUTO-DISPATCH LOGIC ---
-            List<User> technicians = userService.getTechnicians();
-
-            User matchingTech = technicians.stream()
-                    .filter(t -> {
-                        String cat = category.toLowerCase().trim();
-                        String specialty = t.getSpecialty() != null ? t.getSpecialty().toLowerCase().trim() : "";
-                        String name = t.getName() != null ? t.getName().toLowerCase().trim() : "";
-                        String email = t.getEmail() != null ? t.getEmail().toLowerCase().trim() : "";
-
-                        // 1. Direct Specialty Match (e.g., category 'Masonry' matches specialty 'Masonry')
-                        if (!specialty.isEmpty() && (specialty.contains(cat) || cat.contains(specialty))) {
-                            return true;
-                        }
-
-                        // 2. Name or Email Match
-                        return name.contains(cat) || email.contains(cat);
-                    })
-                    .findFirst()
-                    .orElse(null);
-
-            // Fallback: Assign to first available registered technician if no exact specialty match exists
-            if (matchingTech == null && !technicians.isEmpty()) {
-                matchingTech = technicians.get(0);
-            }
-
-            if (matchingTech != null) {
-                report.setAssignedTo(matchingTech);
+            if (assignedTech != null) {
+                report.setAssignedTo(assignedTech);
+                System.out.println("✅ ASSIGNED: " + assignedTech.getName() + " (ID: " + assignedTech.getId() + ")");
+            } else {
+                System.out.println("❌ NO TECHNICIAN FOUND for category: " + category);
             }
 
             Report savedReport = reportService.createReport(report);
             
-            // Enforce status explicitly before returning DTO
-            savedReport.setStatus("PENDING_ACCEPTANCE");
-            
             return ResponseEntity.ok(ReportResponse.fromEntity(savedReport));
+            
         } catch (IOException e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", "Failed to store media file: " + e.getMessage()));
@@ -147,27 +124,73 @@ public class ReportController {
         }
     }
 
-    // --- 2. TECHNICIAN DISPATCH BOARD FETCH ---
+    // ✅ ROUND-ROBIN ASSIGNMENT METHOD - GUARANTEED TO WORK
+    private User assignTechnicianRoundRobin(String category) {
+        // Get all technicians
+        List<User> technicians = userService.getTechnicians();
+        
+        if (technicians.isEmpty()) {
+            System.out.println("❌ No technicians found!");
+            return null;
+        }
+
+        String categoryLower = category.toLowerCase().trim();
+        System.out.println("🔍 ======================================");
+        System.out.println("🔍 CATEGORY: " + category);
+        System.out.println("🔍 TOTAL TECHNICIANS: " + technicians.size());
+        
+        // Find technicians with matching specialty (case-insensitive)
+        List<User> matchingTechs = new ArrayList<>();
+        for (User tech : technicians) {
+            String specialty = tech.getSpecialty() != null ? tech.getSpecialty().toLowerCase().trim() : "";
+            
+            // Check if specialty matches category
+            if (!specialty.isEmpty() && (specialty.contains(categoryLower) || categoryLower.contains(specialty))) {
+                matchingTechs.add(tech);
+            }
+        }
+        
+        System.out.println("🔍 MATCHING TECHNICIANS: " + matchingTechs.size());
+        for (User t : matchingTechs) {
+            System.out.println("   - " + t.getName() + " (ID: " + t.getId() + ", Specialty: " + t.getSpecialty() + ")");
+        }
+        
+        if (matchingTechs.isEmpty()) {
+            // Fallback: use the first available technician
+            User fallback = technicians.get(0);
+            System.out.println("⚠️ No specialty match! FALLBACK to: " + fallback.getName());
+            return fallback;
+        }
+        
+        // Round-robin: get the next index
+        int currentIndex = specialtyCounter.getOrDefault(categoryLower, 0);
+        User selected = matchingTechs.get(currentIndex);
+        
+        // Update counter for next time
+        int nextIndex = (currentIndex + 1) % matchingTechs.size();
+        specialtyCounter.put(categoryLower, nextIndex);
+        
+        System.out.println("🎯 SELECTED: " + selected.getName() + " (ID: " + selected.getId() + ")");
+        System.out.println("   Index: " + currentIndex + " → Next: " + nextIndex + " of " + matchingTechs.size());
+        System.out.println("🔍 ======================================");
+        
+        return selected;
+    }
+
     @GetMapping("/technician/{technicianId}")
     public ResponseEntity<List<ReportResponse>> getReportsByTechnician(@PathVariable Long technicianId) {
-        // Fetch ONLY reports strictly assigned to this technician ID
-        List<Report> reports = reportService.getAllReports().stream()
-                .filter(r -> r.getAssignedTo() != null && r.getAssignedTo().getId().equals(technicianId))
-                .collect(Collectors.toList());
-
+        List<Report> reports = reportRepository.findByAssignedToId(technicianId);
         return ResponseEntity.ok(reports.stream()
                 .map(ReportResponse::fromEntity)
                 .collect(Collectors.toList()));
     }
 
-    // --- 3. ACCEPT TASK ENDPOINT ---
     @PutMapping("/{id}/accept")
     public ResponseEntity<?> acceptReport(@PathVariable Long id) {
         try {
             Report report = reportService.getReportById(id)
                     .orElseThrow(() -> new RuntimeException("Report not found"));
-
-            report.setStatus("in_progress"); // Confirmed by technician!
+            report.setStatus("in_progress");
             Report updated = reportService.createReport(report);
             return ResponseEntity.ok(ReportResponse.fromEntity(updated));
         } catch (Exception e) {
@@ -175,7 +198,6 @@ public class ReportController {
         }
     }
 
-    // --- 4. REJECT TASK ENDPOINT ---
     @PutMapping("/{id}/reject")
     public ResponseEntity<?> rejectReport(@PathVariable Long id) {
         try {
@@ -216,11 +238,9 @@ public class ReportController {
         }
     }
 
-    // --- STUDENT & ADMIN ENDPOINTS ---
-
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<ReportResponse>> getReportsByUser(@PathVariable Long userId) {
-        List<Report> reports = reportService.getReportsByUser(userId);
+        List<Report> reports = reportRepository.findByUserId(userId);
         return ResponseEntity.ok(reports.stream()
                 .map(ReportResponse::fromEntity)
                 .collect(Collectors.toList()));

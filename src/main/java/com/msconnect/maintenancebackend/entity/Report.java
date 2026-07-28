@@ -12,29 +12,32 @@ public class Report {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "user_id", nullable = true) // Set to true to prevent non-null constraint exceptions
-    private User user; // The Student reporting the issue
+    @JoinColumn(name = "user_id", nullable = true)
+    private User user;
 
     @Column(nullable = false)
-    private String category; // e.g., "Electrical", "Plumbing", "Carpentry", "Masonry"
+    private String category;
 
     @Column(name = "block_landmark", nullable = false)
-    private String blockLandmark; // e.g., "Unity Hall, Block C"
+    private String blockLandmark;
 
     @Column(name = "room_number", nullable = false)
-    private String roomNumber; // e.g., "42"
+    private String roomNumber;
 
     @Column(name = "image_url")
-    private String imageUrl; // Store local files path or web URLs
+    private String imageUrl;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
+     
+    @Column(name = "visibility", nullable = false)
+    private String visibility = "public";
 
     private Double latitude;
     private Double longitude;
 
     @Column(nullable = false)
-    private String status = "PENDING_ACCEPTANCE"; // ✅ DEFAULT SET TO PENDING_ACCEPTANCE
+    private String status = "PENDING_ACCEPTANCE";
 
     @Column(nullable = false)
     private String priority = "medium";
@@ -47,17 +50,20 @@ public class Report {
 
     @ManyToOne
     @JoinColumn(name = "assigned_to")
-    private User assignedTo; // The auto-dispatched technician
+    private User assignedTo;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (status == null || status.trim().isEmpty()) {
-            status = "PENDING_ACCEPTANCE"; // ✅ ENFORCES PENDING_ACCEPTANCE ON JPA PERSIST
+            status = "PENDING_ACCEPTANCE";
         }
         if (priority == null || priority.trim().isEmpty()) {
             priority = "medium";
+        }
+        if (visibility == null || visibility.trim().isEmpty()) {
+            visibility = "public";
         }
     }
 
@@ -69,7 +75,7 @@ public class Report {
     // Default Constructor
     public Report() {}
 
-    // Getters
+    // --- GETTERS ---
     public Long getId() { return id; }
     public User getUser() { return user; }
     public String getCategory() { return category; }
@@ -84,8 +90,9 @@ public class Report {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public User getAssignedTo() { return assignedTo; }
+    public String getVisibility() { return visibility; }  // ✅ KEEP ONLY ONE
 
-    // Setters
+    // --- SETTERS ---
     public void setId(Long id) { this.id = id; }
     public void setUser(User user) { this.user = user; }
     public void setCategory(String category) { this.category = category; }
@@ -100,4 +107,5 @@ public class Report {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public void setAssignedTo(User assignedTo) { this.assignedTo = assignedTo; }
+    public void setVisibility(String visibility) { this.visibility = visibility; }
 }

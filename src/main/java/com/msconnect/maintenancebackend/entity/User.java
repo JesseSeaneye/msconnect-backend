@@ -44,7 +44,7 @@ public class User {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "email_verified")
+    @Column(nullable = false)
     private boolean emailVerified = false;
 
     @PrePersist

@@ -25,8 +25,13 @@ public class UserService {
         return userRepository.findByEmail(email);
     }
 
-    public List<User> getTechnicians() {
-        return userRepository.findByRole("technician");
+   public List<User> getTechnicians() {
+    List<User> techs = userRepository.findByRole("technician");
+    System.out.println("🔍 UserService.getTechnicians() found: " + techs.size());
+    for (User t : techs) {
+        System.out.println("   - " + t.getId() + ": " + t.getName());
+    }
+    return techs;
     }
 
     public User createUser(User user) {

@@ -31,7 +31,10 @@ public class ReportResponse {
     // Timestamps
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
+     
+    
+    private String visibility;
+    
     // Default Constructor
     public ReportResponse() {}
 
@@ -93,6 +96,8 @@ public class ReportResponse {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
 
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String visibility) { this.visibility = visibility; }
     // Static Converter Method
     public static ReportResponse fromEntity(Report report) {
         ReportResponse response = new ReportResponse();
@@ -104,7 +109,7 @@ public class ReportResponse {
         response.setDescription(report.getDescription());
         response.setLatitude(report.getLatitude());
         response.setLongitude(report.getLongitude());
-        
+        response.setVisibility(report.getVisibility());
         // Preserve exact status ("PENDING_ACCEPTANCE", "in_progress", etc.)
         response.setStatus(report.getStatus() != null ? report.getStatus() : "PENDING_ACCEPTANCE");
         response.setPriority(report.getPriority());
