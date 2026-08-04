@@ -36,12 +36,17 @@ public class JwtUtil {
     }
 
     public String extractRole(String token) {
-        return (String) Jwts.parserBuilder()
+       try {
+         return (String) Jwts.parserBuilder()
                 .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody()
                 .get("role");
+       } catch (Exception e) {
+        System.out.println("❌ Error extracting role: " + e.getMessage());
+        return null;
+    }
     }
 
     public boolean isTokenValid(String token) {

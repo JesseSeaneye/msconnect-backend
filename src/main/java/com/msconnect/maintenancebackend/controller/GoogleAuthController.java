@@ -1,3 +1,4 @@
+/* 
 package com.msconnect.maintenancebackend.controller;
 
 import com.msconnect.maintenancebackend.entity.User;
@@ -42,3 +43,4 @@ public class GoogleAuthController {
         response.sendRedirect("http://localhost:3000/auth-success?token=" + token + "&role=" + user.getRole());
     }
 }
+*/

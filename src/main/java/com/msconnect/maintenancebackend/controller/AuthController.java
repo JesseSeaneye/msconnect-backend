@@ -21,7 +21,6 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     private final BCryptPasswordEncoder passwordEncoder;
 
-    // Constructor Injection
     public AuthController(UserRepository userRepository, JwtUtil jwtUtil) {
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
@@ -31,7 +30,6 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
         try {
-            // Clean and normalize email input
             String cleanEmail = (request.getEmail() != null) 
                     ? request.getEmail().trim().toLowerCase() 
                     : "";
@@ -40,30 +38,25 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email is required!"));
             }
 
-            // Check if user exists (case-insensitive check)
             if (userRepository.existsByEmailIgnoreCase(cleanEmail)) {
                 return ResponseEntity.badRequest().body(Map.of("error", "Email already registered!"));
             }
 
-            // Determine role (default to "student" if null/empty)
             String userRole = (request.getRole() != null && !request.getRole().isEmpty()) 
                     ? request.getRole().trim().toLowerCase() 
                     : "student";
 
-            // Create new user entity
             User user = new User();
             user.setName(request.getName());
             user.setEmail(cleanEmail);
             user.setRole(userRole);
             user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
             
-            // Campus location / residence fields
             user.setHostel(request.getHostel());
             user.setRoomNo(request.getRoomNo());
             user.setLatitude(request.getLatitude());
             user.setLongitude(request.getLongitude());
 
-            // Technician specific fields vs Student/Admin safety
             if ("technician".equalsIgnoreCase(userRole)) {
                 user.setSpecialty(request.getSpecialty());
                 user.setIsAvailable(request.getIsAvailable() != null ? request.getIsAvailable() : true);
@@ -81,29 +74,24 @@ public class AuthController {
                 "role", user.getRole()
             ));
         } catch (Exception e) {
-            e.printStackTrace(); // Logs error details to terminal
+            e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest request) {
-        // Safety check for null request or null email/password
         if (request == null || request.getEmail() == null || request.getPassword() == null) {
             return ResponseEntity.status(400).body(Map.of("error", "Email and password are required."));
         }
 
-        // Clean and normalize email input
         String cleanEmail = request.getEmail().trim().toLowerCase();
-
-        // Find user using CASE-INSENSITIVE lookup
         User user = userRepository.findByEmailIgnoreCase(cleanEmail).orElse(null);
 
         if (user == null) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid email or password"));
         }
 
-        // Verify password (supports BCrypt & plaintext fallback for old DB entries)
         boolean passwordMatches = passwordEncoder.matches(request.getPassword(), user.getPasswordHash());
         
         if (!passwordMatches && request.getPassword().equals(user.getPasswordHash())) {
@@ -114,10 +102,8 @@ public class AuthController {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid email or password"));
         }
 
-        // Generate JWT token
         String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
 
-        // Return structured payload matching React Native expectations
         return ResponseEntity.ok(Map.of(
             "token", token,
             "role", user.getRole() != null ? user.getRole().toLowerCase() : "student",
@@ -130,5 +116,82 @@ public class AuthController {
     @GetMapping("/test")
     public ResponseEntity<?> test() {
         return ResponseEntity.ok(Map.of("message", "Auth endpoints are operational!"));
+    }
+
+    // ✅ ADMIN-ONLY: Create new admin account
+    @PostMapping("/admin/create")
+public ResponseEntity<?> createAdmin(@RequestBody RegisterRequest request, @RequestHeader("Authorization") String authHeader) {
+    System.out.println("🔍 ===== CREATE ADMIN REQUEST =====");
+    System.out.println("🔍 Auth Header: " + (authHeader != null ? authHeader.substring(0, Math.min(authHeader.length(), 50)) + "..." : "null"));
+    
+    try {
+        // 1. Check if Authorization header exists
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("❌ No Bearer token found!");
+            return ResponseEntity.status(401).body(Map.of("error", "Authentication required"));
+        }
+        
+        // 2. Extract token and validate
+        String token = authHeader.substring(7);
+        System.out.println("🔍 Token: " + token.substring(0, Math.min(token.length(), 30)) + "...");
+        
+        // 3. Extract email and role from token
+        String requesterEmail = jwtUtil.extractEmail(token);
+        String requesterRole = jwtUtil.extractRole(token);
+        
+        System.out.println("🔍 Email from token: " + requesterEmail);
+        System.out.println("🔍 Role from token: " + requesterRole);
+        
+        // 4. Check if user exists and is admin
+        User requester = userRepository.findByEmailIgnoreCase(requesterEmail).orElse(null);
+        if (requester == null) {
+            System.out.println("❌ User not found in database!");
+            return ResponseEntity.status(403).body(Map.of("error", "User not found"));
+        }
+        
+        System.out.println("🔍 Database role: " + requester.getRole());
+        System.out.println("🔍 Database ID: " + requester.getId());
+        
+        if (!"admin".equalsIgnoreCase(requester.getRole())) {
+            System.out.println("❌ User is NOT an admin! Role: " + requester.getRole());
+            return ResponseEntity.status(403).body(Map.of("error", "Only admins can create new admin accounts"));
+        }
+        
+        System.out.println("✅ User IS an admin! Proceeding...");
+        
+        // 5. Validate new admin's email
+        String cleanEmail = request.getEmail().trim().toLowerCase();
+        if (cleanEmail.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email is required"));
+        }
+        
+        if (userRepository.existsByEmailIgnoreCase(cleanEmail)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Email already registered"));
+        }
+        
+        // 6. Create the new admin
+        User newAdmin = new User();
+        newAdmin.setName(request.getName());
+        newAdmin.setEmail(cleanEmail);
+        newAdmin.setRole("admin");
+        newAdmin.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        newAdmin.setIsAvailable(false);
+        
+        userRepository.save(newAdmin);
+        
+        System.out.println("✅ Admin created successfully! ID: " + newAdmin.getId());
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "Admin account created successfully!",
+            "id", newAdmin.getId(),
+            "email", newAdmin.getEmail(),
+            "role", newAdmin.getRole()
+        ));
+        
+    } catch (Exception e) {
+        System.out.println("❌ Exception: " + e.getMessage());
+        e.printStackTrace();
+        return ResponseEntity.status(500).body(Map.of("error", "Server error: " + e.getMessage()));
+    }
     }
 }

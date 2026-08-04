@@ -72,8 +72,19 @@ public class Report {
         updatedAt = LocalDateTime.now();
     }
 
-    // Default Constructor
-    public Report() {}
+    @Column(name = "sla_deadline")
+    private LocalDateTime slaDeadline;
+
+    @Column(name = "sla_status")
+    private String slaStatus = "on_track";
+
+    @Column(name = "response_time")
+    private Integer responseTime;
+
+    @Column(name = "resolution_time")
+    private Integer resolutionTime;
+        // Default Constructor
+        public Report() {}
 
     // --- GETTERS ---
     public Long getId() { return id; }
@@ -91,6 +102,12 @@ public class Report {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public User getAssignedTo() { return assignedTo; }
     public String getVisibility() { return visibility; }  // ✅ KEEP ONLY ONE
+    public LocalDateTime getSlaDeadline() { return slaDeadline; }
+    public String getSlaStatus() { return slaStatus; }
+    public Integer getResponseTime() { return responseTime; }
+    public Integer getResolutionTime() { return resolutionTime; }
+
+
 
     // --- SETTERS ---
     public void setId(Long id) { this.id = id; }
@@ -108,4 +125,8 @@ public class Report {
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public void setAssignedTo(User assignedTo) { this.assignedTo = assignedTo; }
     public void setVisibility(String visibility) { this.visibility = visibility; }
+    public void setSlaDeadline(LocalDateTime slaDeadline) { this.slaDeadline = slaDeadline; }
+    public void setSlaStatus(String slaStatus) { this.slaStatus = slaStatus; }
+    public void setResponseTime(Integer responseTime) { this.responseTime = responseTime; }
+    public void setResolutionTime(Integer resolutionTime) { this.resolutionTime = resolutionTime; }
 }
