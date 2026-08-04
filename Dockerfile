@@ -24,5 +24,5 @@ RUN ./mvnw package -DskipTests
 # Expose port
 EXPOSE 8080
 
-# Run the app
-CMD ["java", "-jar", "target/*.jar"]
+# ✅ Run the app with the exact JAR name
+CMD ["java", "-jar", "target/maintenance-backend-0.0.1-SNAPSHOT.jar"]
