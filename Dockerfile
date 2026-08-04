@@ -1,27 +1,28 @@
-# Use a Java 17 base image
-FROM openjdk:17-jdk-slim
+# Use Eclipse Temurin (official OpenJDK replacement)
+FROM eclipse-temurin:17-jdk-alpine
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Copy the Maven wrapper and project files
+# Copy Maven wrapper and project files
 COPY .mvn .mvn
-COPY mvnw pom.xml ./
+COPY mvnw mvnw
+COPY pom.xml .
 
-# Make the Maven wrapper executable
+# Make Maven wrapper executable
 RUN chmod +x mvnw
 
 # Download dependencies
 RUN ./mvnw dependency:go-offline
 
-# Copy the source code
+# Copy source code
 COPY src src
 
-# Build the application
+# Build the app
 RUN ./mvnw package -DskipTests
 
-# Expose the port
+# Expose port
 EXPOSE 8080
 
-# Run the application
+# Run the app
 CMD ["java", "-jar", "target/*.jar"]
